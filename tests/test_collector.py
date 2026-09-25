@@ -28,3 +28,20 @@ def test_call_counter_persists(tmp_path):
     day = datetime(2026, 9, 25, tzinfo=KST).date()
     CallCounter(tmp_path).add(day, 3)
     assert CallCounter(tmp_path).add(day, 2) == 5
+
+
+def test_read_raw_supports_gzipped_run_files(tmp_path):
+    import gzip
+    import json
+
+    from gjeta.collector import raw_files, read_raw
+    from gjeta.sources.seoul_realtime import RawResponse
+
+    t = kst(2026, 9, 26, 7, 0)
+    raw = RawResponse("s", "u", t, t, 1, 200, {"code": "INFO-000"}, None, None)
+    (tmp_path / "raw").mkdir()
+    with gzip.open(tmp_path / "raw" / "2026-09-26.run1.jsonl.gz", "wt", encoding="utf-8") as f:
+        f.write(json.dumps(raw.to_dict()) + "\n")
+    files = raw_files(tmp_path, [t.date()])
+    assert len(files) == 1
+    assert [r.api_code for r in read_raw(files)] == ["INFO-000"]

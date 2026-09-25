@@ -1,0 +1,67 @@
+# Daily real-time position collection (DESIGN §5).
+# Needs the repository secret SEOUL_API_KEY. Data goes to the `collected-data` branch
+# as gzipped JSONL, one file per run, so the main branch stays code-only.
+name: collect
+
+on:
+  schedule:
+    - cron: "20 21 * * *"   # 06:20 KST (UTC+9); GitHub may start a few minutes late
+  workflow_dispatch:
+    inputs:
+      window:
+        description: "KST window HH:MM-HH:MM (manual runs start collecting immediately if inside it)"
+        default: "06:30-10:30"
+
+concurrency: collect
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      WINDOW: ${{ inputs.window || '06:30-10:30' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -e .
+
+      - name: Restore data branch (keeps the daily call count across runs)
+        run: |
+          echo "STORE=$RUNNER_TEMP/store" >> "$GITHUB_ENV"
+          STORE="$RUNNER_TEMP/store"
+          remote="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git ls-remote --exit-code --heads "$remote" collected-data >/dev/null; then
+            git clone --quiet --depth 1 --branch collected-data "$remote" "$STORE"
+          else
+            git init --quiet -b collected-data "$STORE"
+            git -C "$STORE" remote add origin "$remote"
+          fi
+          mkdir -p data/calls "$STORE/calls" "$STORE/raw"
+          cp -r "$STORE/calls/." data/calls/ || true
+
+      - name: Collect
+        env:
+          SEOUL_API_KEY: ${{ secrets.SEOUL_API_KEY }}
+        run: python -m gjeta.collector --window "$WINDOW" --single-window --daily-limit 1000
+
+      - name: Save data to collected-data branch
+        if: always()
+        run: |
+          for f in data/raw/*.jsonl; do
+            [ -e "$f" ] || continue
+            gzip -c "$f" > "$STORE/raw/$(basename "$f" .jsonl).run${{ github.run_id }}.jsonl.gz"
+          done
+          cp -r data/calls/. "$STORE/calls/"
+          cd "$STORE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit --quiet -m "data: run ${{ github.run_id }} ($WINDOW KST)" || { echo "nothing to save"; exit 0; }
+          git push --quiet origin collected-data

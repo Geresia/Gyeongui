@@ -15,6 +15,7 @@ so polling lasts until the window ends instead of stopping early.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import logging
 import os
@@ -51,7 +52,8 @@ class JsonlRawStore:
 
 def read_raw(paths: list[Path]) -> Iterator[RawResponse]:
     for path in sorted(paths):
-        with path.open(encoding="utf-8") as f:
+        opener = gzip.open if path.suffix == ".gz" else open
+        with opener(path, "rt", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -59,10 +61,11 @@ def read_raw(paths: list[Path]) -> Iterator[RawResponse]:
 
 
 def raw_files(data_dir: Path, days: list[date] | None = None) -> list[Path]:
-    files = sorted((data_dir / "raw").glob("*.jsonl"))
+    # Plain daily files from a local collector, or gzipped per-run files from CI.
+    files = sorted([*(data_dir / "raw").glob("*.jsonl"), *(data_dir / "raw").glob("*.jsonl.gz")])
     if days:
         wanted = {d.isoformat() for d in days}
-        files = [p for p in files if p.stem in wanted]
+        files = [p for p in files if p.name[:10] in wanted]
     return files
 
 
@@ -129,7 +132,8 @@ def fetch_with_retry(api_key: str, max_attempts: int = RETRIES) -> tuple[RawResp
     return raw, attempts
 
 
-def run(api_key: str, data_dir: Path, interval: float, daily_limit: int, window: tuple[dtime, dtime]) -> None:
+def run(api_key: str, data_dir: Path, interval: float, daily_limit: int, window: tuple[dtime, dtime],
+        single_window: bool = False) -> None:
     store = JsonlRawStore(data_dir)
     counter = CallCounter(data_dir)
     tracker = TrainTracker(load_default_network())
@@ -144,11 +148,14 @@ def run(api_key: str, data_dir: Path, interval: float, daily_limit: int, window:
 
     log.info("collector started: interval=%ss window=%s-%s daily_limit=%s data_dir=%s",
              interval, window[0], window[1], daily_limit or "none", data_dir)
+    collected = False
     while not stopping:
         started = time.monotonic()
         now = datetime.now(KST)
         end = window_end(now, window)
         if end is None:
+            if single_window and collected:
+                break  # window finished (CI mode)
             time.sleep(30)
             continue
         today = now.date()
@@ -159,6 +166,7 @@ def run(api_key: str, data_dir: Path, interval: float, daily_limit: int, window:
             time.sleep(60)
             continue
 
+        collected = True
         raw, attempts = fetch_with_retry(api_key, RETRIES if remaining is None else max(1, min(RETRIES, remaining)))
         used = counter.add(today, attempts)
         store.append(raw)
@@ -181,12 +189,14 @@ def main() -> None:
                         help="0 = no limit (only after the gallery registration lifts the quota)")
     parser.add_argument("--window", default=os.environ.get("COLLECT_WINDOW", DEFAULT_WINDOW),
                         help="KST collection window HH:MM-HH:MM, may cross midnight")
+    parser.add_argument("--single-window", action="store_true",
+                        help="exit once the current/next window has ended (for scheduled CI runs)")
     args = parser.parse_args()
     api_key = os.environ.get("SEOUL_API_KEY")
     if not api_key:
         raise SystemExit("SEOUL_API_KEY is not set")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    run(api_key, args.data_dir, args.interval, args.daily_limit, parse_window(args.window))
+    run(api_key, args.data_dir, args.interval, args.daily_limit, parse_window(args.window), args.single_window)
 
 
 if __name__ == "__main__":

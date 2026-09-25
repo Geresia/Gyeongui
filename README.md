@@ -47,6 +47,11 @@ python scripts/probe_api.py --count 8 --interval 15
 #    한도 1,000회/일 → 출근 시간 4시간 × 15초 = 960회
 python -m gjeta.collector --window 06:30-10:30
 
+# 2-1) 자동 수집 (GitHub Actions): 매일 06:30~10:30 KST, 결과는 collected-data 브랜치
+#      필요: 저장소 Settings → Secrets and variables → Actions → SEOUL_API_KEY
+#      로컬 분석:  git fetch origin collected-data && git worktree add ../gj-data collected-data
+#                 python scripts/replay.py --data-dir ../gj-data --backtest
+
 # 3) 쌓인 데이터로 추적 품질 확인 + baseline 평가
 python scripts/replay.py --data-dir data --backtest
 ```
