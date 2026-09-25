@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.png">
+    <img src="docs/assets/logo-light.png" alt="경의중앙 ETA — Gyeongui-Jungang Real-Time ETA" width="520">
+  </picture>
+</p>
+
 # Gyeongui-Jungang Real-Time ETA Predictor
 
 경의중앙선 실시간 열차 위치를 수집해서 **역별 도착 ETA** 와 **A→B 실제 소요시간**을 예측하는 프로젝트입니다.

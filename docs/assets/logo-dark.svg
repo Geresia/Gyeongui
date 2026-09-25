@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 320" width="1240" height="320" role="img" aria-label="경의중앙 ETA — Gyeongui-Jungang Real-Time ETA">
+  <g transform="translate(24 24) scale(0.53125)">
+  <rect width="512" height="512" rx="112" fill="#0B3036"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#1F5A5B" stroke-width="36"/>
+  <path d="M126.1 331 A150 150 0 0 1 385.9 181" fill="none" stroke="#77C4A3" stroke-width="36" stroke-linecap="round"/>
+  <g fill="#0B3036" stroke="#FFFFFF" stroke-width="10">
+    <circle cx="126.1" cy="331" r="17"/>
+    <circle cx="126.1" cy="181" r="17"/>
+    <circle cx="256" cy="106" r="17"/>
+  </g>
+  <line x1="256" y1="256" x2="335.7" y2="210" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="24" fill="#FFFFFF"/>
+  <circle cx="385.9" cy="181" r="36" fill="#FFFFFF" stroke="#0B3036" stroke-width="12"/>
+  <circle cx="385.9" cy="181" r="13" fill="#77C4A3"/>
+  </g>
+  <g font-family="Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif">
+    <text x="340" y="176" font-size="112" font-weight="800" fill="#FFFFFF" letter-spacing="-3">경의중앙 <tspan fill="#77C4A3">ETA</tspan></text>
+    <text x="344" y="246" font-size="40" font-weight="500" fill="#A9C9C6" letter-spacing="1">Gyeongui-Jungang Real-Time ETA</text>
+  </g>
+</svg>
