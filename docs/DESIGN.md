@@ -25,8 +25,8 @@ Spec 의 방향(수집기 먼저, baseline 고정, 원인 추정과 확정 구�
 | # | 데이터 | 출처 | 상태 | Phase 1 | Phase 2+ |
 |---|---|---|---|---|---|
 | D1 | 경의중앙선 실시간 열차 위치 (`realtimePosition`) | 서울 열린데이터광장 `swopenapi.seoul.go.kr` | 엔드포인트 응답 **VERIFIED**, 필드 **DOCUMENTED** | **필수** | 필수 |
-| D2 | 역별 실시간 도착정보 (`realtimeStationArrival`) | 서울 열린데이터광장 | DOCUMENTED | 있으면 좋음 (D1 교차검증, 기존 서비스 ETA 비교용) | 있으면 좋음 |
-| D3 | 경의중앙선 역 순서 / 노선 구조 | 코레일 공식 노선도, 서울 열린데이터 역정보 | 시드 CSV 작성 (역명 **실제 API 값으로 검증 필요**) | **필수** | 필수 |
+| D2 | 역별 실시간 도착정보 (`realtimeStationArrival`, 일괄 조회 버전 별도 존재) | 서울 열린데이터광장 | 명세서 **확인 (2026-09-25)**, 실제 레코드 미확인 | 있으면 좋음 (D1 교차검증, 기존 서비스 ETA 비교용, D1 이 안 될 때 대안) | 있으면 좋음 |
+| D3 | 경의중앙선 역 순서 / 노선 구조 | 코레일 공식 노선도 + 열린데이터 `실시간도착_역정보(YYYYMMDD).xlsx` (API 가 쓰는 역 ID·역명, 매월 갱신) | 시드 CSV 작성. **xlsx 로 역명/ID 대조 필요** | **필수** | 필수 |
 | D4 | 역 좌표 | 서울 열린데이터 역 위치정보 / 국가철도공단 | UNKNOWN (출처 미정) | 없어도 됨 | 있으면 좋음 (지도 UI) |
 | D5 | 경의중앙선 공식 시간표 (열차번호별) | 코레일 / 공공데이터포털 | **UNKNOWN** — 기계 판독 가능한 형태 미확인 | 있으면 좋음 (없으면 "시간표 대비 지연" = null) | **필수** (sequence change, rotation) |
 | D6 | KTX / ITX / 일반열차 **실시간 위치** | 코레일 | **UNKNOWN** — 공개 API 미확인 | 없어도 됨 | **필수** (Conflict) |
@@ -43,6 +43,12 @@ Spec 의 방향(수집기 먼저, baseline 고정, 원인 추정과 확정 구�
 - **VERIFIED (2026-09-26 01:35 KST):** `http://swopenapi.seoul.go.kr/api/subway/{KEY}/json/realtimePosition/{start}/{end}/경의중앙선` 호출 시 JSON 응답. 운행 종료 시간대라 `INFO-200 해당하는 데이터가 없습니다` 반환 → **실제 열차 레코드는 아직 못 봤다.**
 - **DOCUMENTED 필드:** `subwayId, subwayNm, statnId, statnNm, trainNo, lastRecptnDt, recptnDt, updnLine, statnTid, statnTnm, trainSttus, directAt, lstcarAt`
 - 파서(`src/gjeta/sources/seoul_realtime.py`)는 위 필드를 **읽기만** 하고, 없거나 형식이 다르면 `None` 으로 두며 raw payload 는 항상 통째로 보존한다.
+- **명세서로 확인한 것 (도착정보 API, 2026-09-25):**
+  - `recptnDt` = "열차 도착정보를 생성한 시각". 명세서는 "현재시각 − recptnDt 만큼 열차가 더 진행한 것으로 보정해서 쓰라"고 안내한다. 추적 엔진은 이미 이벤트 시각에 `recptnDt` 를 쓰고, ETA confidence 의 staleness 도 `recptnDt` 기준으로 계산하므로 이 안내와 맞다.
+  - 도착정보 API 의 `arvlCd` 는 0 진입, 1 도착, 2 출발, 3 전역출발, 4 전역진입, 5 전역도착, 99 운행중. 위치 API `trainSttus` 는 0~3 만 문서화돼 있다.
+  - 주의: 필드 이름이 같아도 API 마다 뜻이 다르다. 도착정보의 `statnTid` 는 **다음역** ID 이고 종착역은 `bstatnId`/`bstatnNm` 이다. 위치 API 의 `statnTid`/`statnTnm` 은 종착역이다.
+  - 샘플키(`sample`)는 '서울'역만, 한 번에 1~5건만 조회된다. 실제 수집에는 발급 인증키가 필요하다.
+  - 서울시 밖 역은 미제공 (→ U11).
 - **TODO (운행 시간대에 실행):** `python scripts/probe_api.py` 로 실제 응답을 `samples/` 에 저장 → 필드명·값 형식·`trainSttus` 전이 패턴 확인 → 파서/문서 수정.
 
 ### 2.2 UNKNOWN 목록 (추측하지 않음)
@@ -50,7 +56,7 @@ Spec 의 방향(수집기 먼저, baseline 고정, 원인 추정과 확정 구�
 | ID | 질문 | 확인 방법 |
 |---|---|---|
 | U1 | 실시간 지하철 인증키 일일 호출 한도 | 인증키 발급 페이지 / 초과 시 에러 코드 관찰 |
-| U2 | `recptnDt` 의미와 갱신 주기 | 연속 폴링 시 값 변화 간격 측정 |
+| U2 | `recptnDt` 갱신 주기 (의미는 도착정보 명세서에 "정보를 생성한 시각"으로 **확인됨**) | 연속 폴링 시 값 변화 간격 측정 |
 | U3 | `updnLine` 0/1 ↔ 문산/용문 방향 대응 | 종착역(`statnTnm`)과 대조. **코드에서는 종착역 기준으로 방향을 정하고 updnLine 은 교차검증에만 사용** |
 | U4 | `trainSttus` 가 역마다 빠짐없이 나오는지 | 1대 추적 로그에서 skipped/inferred 비율 측정 |
 | U5 | 급행(`directAt`) 통과역 표현 | 급행 열차 로그 분석. **MVP 에서 급행은 수집만 하고 ETA 제외** |
@@ -59,6 +65,7 @@ Spec 의 방향(수집기 먼저, baseline 고정, 원인 추정과 확정 구�
 | U8 | 한 응답에 같은 열차가 중복으로 나오는지 | 응답 내 `trainNo` 중복 카운트 |
 | U9 | 간선열차 실시간 위치 공개 여부 (D6) | 코레일 / 공공데이터포털 조사 |
 | U10 | 경의중앙선 시간표 기계판독 가능 여부 (D5) | 공공데이터포털 조사 |
+| **U11** | **서울시 밖 역 제공 여부.** 도착정보 명세서에 "서울시 이외의 역구간은 미제공"이라고 돼 있다. 위치 API 도 같은지 모름. 같다면 수색~양원 밖(문산·일산·구리·덕소·양평·용문 등)은 추적 불가 | probe 결과의 역명 분포 확인. **MVP 에서 가장 중요한 UNKNOWN** |
 
 ---
 
