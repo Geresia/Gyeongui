@@ -24,7 +24,7 @@
 | 구성 | 상태 |
 |---|---|
 | 서울시 실시간 위치 API client + 방어적 파서 (raw 보존) | ✅ 구현, 엔드포인트 연결 확인 / **실제 열차 레코드로는 아직 미검증** |
-| 수집기 (15초 폴링, 운행시간대만, JSONL 저장, retry, 일일 호출 한도) | ✅ 구현 |
+| 수집기 (15초 폴링, 수집 시간대 지정, 1,000회/일 한도 관리, JSONL 저장, retry) | ✅ 구현 |
 | 열차 추적: 진행 서수 모델로 진입/도착/출발 이벤트 생성 (시간 구간 + inferred 표시) | ✅ 구현 + 테스트 |
 | 구간 주행시간 / 역 정차시간 파생 | ✅ 구현 + 테스트 |
 | 시간대 버킷 통계 + fallback (L0/L1/L2) | ✅ 구현 + 테스트 |
@@ -44,7 +44,8 @@ export SEOUL_API_KEY=발급받은_실시간_지하철_인증키
 python scripts/probe_api.py --count 8 --interval 15
 
 # 2) 수집 시작 (data/raw/YYYY-MM-DD.jsonl 에 쌓임)
-python -m gjeta.collector
+#    한도 1,000회/일 → 출근 시간 4시간 × 15초 = 960회
+python -m gjeta.collector --window 06:30-10:30
 
 # 3) 쌓인 데이터로 추적 품질 확인 + baseline 평가
 python scripts/replay.py --data-dir data --backtest
@@ -52,7 +53,8 @@ python scripts/replay.py --data-dir data --backtest
 
 ## 다음 할 일 (우선순위 순)
 
-1. **서울 열린데이터광장에서 실시간 지하철 인증키 발급** → 일일 호출 한도 확인 (DESIGN U1)
+1. **서울 열린데이터광장에서 실시간 지하철 인증키 발급** (한도 1,000회/일 확인됨)
+1-1. **활용사례(갤러리) 등록**으로 호출 한도 해제 — 로고·화면 시안(`docs/assets/`) 사용
 2. 운행 시간대에 `probe_api.py` 실행 → 필드명·역명·`trainSttus` 패턴 검증, 파서/역 CSV 수정 (U2~U8)
 3. 수집기 상시 가동 (최소 2주) → `replay.py` 로 "열차 1대 끝까지 추적" (SPEC §58) 확인
 4. PostgreSQL 적재기

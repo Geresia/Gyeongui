@@ -20,6 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from gjeta.collector import CallCounter  # noqa: E402
 from gjeta.sources.seoul_realtime import fetch_positions  # noqa: E402
 from gjeta.stations import load_default_network  # noqa: E402
 
@@ -44,12 +45,13 @@ def main() -> None:
 
     for i in range(args.count):
         raw = fetch_positions(key)
+        used = CallCounter(Path('data')).add(raw.observed_at.date(), 1)  # shares the daily quota with the collector
         path = args.out / f"position_{raw.observed_at.strftime('%Y%m%dT%H%M%S')}.json"
         path.write_text(json.dumps(raw.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
         records = (raw.body or {}).get("realtimePositionList") or [] if isinstance(raw.body, dict) else []
         dup = [k for k, v in Counter(r.get("trainNo") for r in records).items() if v > 1]
         print(f"[{i + 1}/{args.count}] api_code={raw.api_code} http={raw.http_status} "
-              f"records={len(records)} duplicate_trainNo={dup} saved={path}")
+              f"records={len(records)} duplicate_trainNo={dup} calls_today={used} saved={path}")
         for r in records:
             fields.update(r.keys())
             status[str(r.get("trainSttus"))] += 1
