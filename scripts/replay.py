@@ -21,7 +21,7 @@ from gjeta.eta.evaluation import summarize  # noqa: E402
 from gjeta.models import EventType  # noqa: E402
 from gjeta.sources.seoul_realtime import parse_position_response  # noqa: E402
 from gjeta.stations import load_default_network  # noqa: E402
-from gjeta.tracking.derive import derive_runs  # noqa: E402
+from gjeta.tracking.derive import derive_links, derive_runs  # noqa: E402
 from gjeta.tracking.tracker import TrainTracker  # noqa: E402
 
 
@@ -46,6 +46,10 @@ def main() -> None:
     print(f"tracker: {tracker.stats}")
     print(f"segment runs: {len(segments)} (usable {sum(s.usable for s in segments)})")
     print(f"dwells: {len(dwells)} (usable {sum(d.usable for d in dwells)})")
+    links = derive_links(events)
+    for kind in ("LINK", "APPROACH"):
+        items = [iv for iv in links if iv.kind == kind]
+        print(f"{kind.lower()} intervals: {len(items)} (usable {sum(iv.usable for iv in items)})")
 
     print("\nper-run coverage (arrivals observed / stations passed):")
     for run in sorted(tracker.runs.values(), key=lambda r: r.first_seen):

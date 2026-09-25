@@ -19,6 +19,7 @@ _PAREN = re.compile(r"\(.*?\)")
 DEFAULT_ALIASES: dict[str, str] = {
     "서울": "서울역",
     "DMC": "디지털미디어시티",
+    "화전": "한국항공대",  # renamed; the real-time API returns 한국항공대 (2026-09-26 sample)
 }
 
 

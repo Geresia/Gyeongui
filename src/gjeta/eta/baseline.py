@@ -1,8 +1,10 @@
 """Baseline ETA (M2): current position + historical segment/dwell medians.
 
-    ETA = CondRemain(current segment or dwell, elapsed)
-        + Σ segment(j -> j+1)  for the remaining segments
-        + Σ dwell(j)           for intermediate stations (not the target)
+    ETA = CondRemain(current interval, elapsed) + Σ link(j -> j+1) up to the target
+
+where link = arrival -> next arrival (dwell + run). The real-time API rarely reports
+departures, so links are the primary statistic; when a link has no stats the
+estimate falls back to dwell(j) + segment(j -> j+1).
 
 Every future model must beat this one on the same evaluation (SPEC §60).
 See DESIGN §7 for the reasoning behind each choice.
@@ -29,17 +31,18 @@ ABNORMAL_FACTOR = 0.3
 
 
 class Motion(str, Enum):
-    DWELLING = "DWELLING"   # arrived at `station`, not yet departed
-    RUNNING = "RUNNING"     # departed `station`, heading to path[0]
+    DWELLING = "DWELLING"       # arrived at `station`; may already have left (no departure seen)
+    RUNNING = "RUNNING"         # departure from `station` observed, heading to path[0]
+    APPROACHING = "APPROACHING" # entering `station` (진입), arrival imminent
 
 
 @dataclass(frozen=True)
 class TrainPosition:
     train_run_id: str
     motion: Motion
-    station: str                    # DWELLING: current station; RUNNING: last departed station
-    path: tuple[str, ...]           # stations ahead in travel order, starting with the next one
-    since: datetime | None          # arrival (DWELLING) / departure (RUNNING) time; None if unseen
+    station: str                    # DWELLING: arrived station; RUNNING: departed; APPROACHING: being entered
+    path: tuple[str, ...]           # stations ahead in travel order, after `station`
+    since: datetime | None          # time the current motion began; None if unseen
     last_seen: datetime             # latest observation of this train
 
 
@@ -77,20 +80,16 @@ class EtaResult:
 def position_from_run(run: RunState) -> TrainPosition | None:
     """Translate tracker state into a motion state the ETA can use."""
     k, phase = divmod(run.ordinal, 3)
+    station = run._station_at(k)
+    since = run.milestone_times.get(run.ordinal)
     ahead = _path_after(run, k)
-    if phase == 1:  # ARRIVAL(k)
-        return TrainPosition(run.train_run_id, Motion.DWELLING, run._station_at(k), ahead,
-                             run.milestone_times.get(run.ordinal), run.last_seen)
-    if phase == 2:  # DEPARTURE(k)
-        if not ahead:
-            return None
-        return TrainPosition(run.train_run_id, Motion.RUNNING, run._station_at(k), ahead,
-                             run.milestone_times.get(run.ordinal), run.last_seen)
-    # APPROACH(k) is a hint only: the train is still in segment (k-1 -> k).
-    if k == 0:
+    if phase == 0:
+        return TrainPosition(run.train_run_id, Motion.APPROACHING, station, ahead, since, run.last_seen)
+    if phase == 1:
+        return TrainPosition(run.train_run_id, Motion.DWELLING, station, ahead, since, run.last_seen)
+    if not ahead:
         return None
-    return TrainPosition(run.train_run_id, Motion.RUNNING, run._station_at(k - 1), _path_after(run, k - 1),
-                         run.milestone_times.get(3 * (k - 1) + 2), run.last_seen)
+    return TrainPosition(run.train_run_id, Motion.RUNNING, station, ahead, since, run.last_seen)
 
 
 def _path_after(run: RunState, k: int) -> tuple[str, ...]:
@@ -128,34 +127,57 @@ def _staleness_factor(age_seconds: float) -> float:
     return 1.0 - 0.5 * (age_seconds - FRESH_SECONDS) / (STALE_SECONDS - FRESH_SECONDS)
 
 
+def _hop(stats: TravelStats, a: str, b: str, now: datetime, elapsed: float | None,
+         dwelling: bool) -> tuple[list[Component], bool]:
+    """Time from being at/leaving `a` until arriving at the next station `b`.
+
+    Prefers the LINK statistic; falls back to dwell + segment. `elapsed` (seconds since
+    arriving at `a`) conditions the first component on time already spent."""
+    link = stats.lookup(Kind.LINK, a, b, now)
+    if link.level is not Level.MISSING and dwelling:
+        c, ab = _component(Kind.LINK, a, b, link, elapsed)
+        return [c], ab
+    parts: list[Component] = []
+    abnormal = False
+    if dwelling:
+        c, ab = _component(Kind.DWELL, a, b, stats.lookup(Kind.DWELL, a, b, now), elapsed)
+        parts.append(c)
+        abnormal |= ab
+        elapsed = None
+    c, ab = _component(Kind.SEGMENT, a, b, stats.lookup(Kind.SEGMENT, a, b, now), elapsed)
+    parts.append(c)
+    return parts, abnormal or ab
+
+
 def baseline_eta(pos: TrainPosition, target: str, now: datetime, stats: TravelStats) -> EtaResult | None:
     """ETA of `pos`'s train arriving at `target`. None if target is not ahead."""
-    if target not in pos.path:
+    approaching_target = pos.motion is Motion.APPROACHING and target == pos.station
+    if target not in pos.path and not approaching_target:
         return None
     elapsed = (now - pos.since).total_seconds() if pos.since is not None else None
     parts: list[Component] = []
     abnormal = False
 
-    # 1) what is left of the current dwell / segment
-    first = pos.path[0]
-    if pos.motion is Motion.DWELLING:
-        c, ab = _component(Kind.DWELL, pos.station, first, stats.lookup(Kind.DWELL, pos.station, first, now), elapsed)
+    # 1) what is left of the current interval
+    if pos.motion is Motion.APPROACHING:
+        lk = stats.lookup(Kind.APPROACH, pos.station, pos.station, now)
+        c, ab = _component(Kind.APPROACH, pos.station, pos.station, lk, elapsed)
         parts.append(c)
         abnormal |= ab
-        c, _ = _component(Kind.SEGMENT, pos.station, first, stats.lookup(Kind.SEGMENT, pos.station, first, now), None)
-        parts.append(c)
+        stops = (pos.station,) + pos.path[: pos.path.index(target) + 1] if not approaching_target else ()
     else:
-        c, ab = _component(Kind.SEGMENT, pos.station, first, stats.lookup(Kind.SEGMENT, pos.station, first, now), elapsed)
-        parts.append(c)
+        first = pos.path[0]
+        hop, ab = _hop(stats, pos.station, first, now, elapsed, pos.motion is Motion.DWELLING)
+        parts.extend(hop)
         abnormal |= ab
+        stops = pos.path[: pos.path.index(target) + 1]
 
-    # 2) remaining dwells + segments up to the target. Stats are looked up at `now`;
-    # for long horizons the time band may shift - acceptable for the baseline.
-    stops = pos.path[: pos.path.index(target) + 1]
+    # 2) full hops up to the target (each includes the dwell at its start station).
+    # Stats are looked up at `now`; for long horizons the time band may shift -
+    # acceptable for the baseline.
     for a, b in zip(stops, stops[1:]):
-        for kind in (Kind.DWELL, Kind.SEGMENT):
-            c, _ = _component(kind, a, b, stats.lookup(kind, a, b, now), None)
-            parts.append(c)
+        hop, _ = _hop(stats, a, b, now, None, True)
+        parts.extend(hop)
 
     # Comonotonic sum: quantiles add up (conservative, DESIGN §7).
     eta = sum(p.p50 for p in parts)

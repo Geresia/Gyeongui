@@ -7,8 +7,17 @@ Progress-ordinal model (DESIGN §6.2). For the k-th station along the run's dire
     DEPARTURE(k) = 3k + 2   (trainSttus 2, 출발 / trainSttus 3 at k+1, 전역출발)
 
 When a run's ordinal increases, every milestone passed since the previous observation
-becomes an event bounded by [previous observation time, current observation time].
-Milestones that were skipped between polls are flagged `inferred`.
+becomes an event. Milestones that were skipped between polls are flagged `inferred`.
+
+Timing (verified on real payloads, 2026-09-26): `recptnDt` stays constant while the
+state is unchanged and jumps when it changes, i.e. it is the time the current state
+began. So the observed milestone is timed exactly at `recptnDt`; skipped milestones
+lie between the previous and current `recptnDt`. Without `recptnDt` we fall back to
+our own poll times, bounded by [previous poll, current poll].
+
+Real payloads so far only contain trainSttus 0 (진입) and 1 (도착); a train keeps
+"도착" after it leaves, until it approaches the next station. Departures are therefore
+normally inferred, and travel statistics use arrival-to-arrival links (derive.py).
 
 Pure logic, no I/O: the collector (live) and replay (batch) share this code.
 """
@@ -40,6 +49,7 @@ class RunState:
     is_express: bool | None
     first_seen: datetime
     last_seen: datetime
+    last_observed_at: datetime  # our poll time of the latest observation (continuity check)
     # estimated time of each milestone reached in the current leg (ordinal -> time)
     milestone_times: dict[int, datetime] = field(default_factory=dict)
     leg: int = 0
@@ -118,6 +128,8 @@ class TrainTracker:
             return []
 
         run.last_seen = max(run.last_seen, t)
+        poll_gap = (obs.observed_at - run.last_observed_at).total_seconds()
+        run.last_observed_at = max(run.last_observed_at, obs.observed_at)
         new_ordinal = _ordinal(run, station, obs.status)
         if new_ordinal is None:
             self.stats.unresolved_pattern += 1
@@ -132,17 +144,20 @@ class TrainTracker:
             run.last_time = t
             return []
 
-        gap = (t - run.last_time).total_seconds()
+        # Continuity is judged on our own poll times: with recptnDt as a state-change
+        # time, a long gap between two changes is normal (e.g. a 4-minute link).
         events: list[StationEvent] = []
-        if gap <= self.max_gap_seconds:
+        exact = obs.source_generated_at is not None
+        if poll_gap <= self.max_gap_seconds:
             for m in range(run.ordinal + 1, new_ordinal + 1):
                 k, phase = divmod(m, 3)
+                observed = m == new_ordinal
                 events.append(
                     StationEvent(
                         train_run_id=run.train_run_id,
                         station=run._station_at(k),
                         event_type=_PHASES[phase],
-                        time_lower=run.last_time,
+                        time_lower=t if (observed and exact) else run.last_time,
                         time_upper=t,
                         inferred=m != new_ordinal,
                         step=k,
@@ -183,6 +198,7 @@ class TrainTracker:
             is_express=obs.is_express,
             first_seen=previous.first_seen if previous else t,
             last_seen=t,
+            last_observed_at=obs.observed_at,
             leg=(previous.leg + 1) if previous else 0,
             gaps=(previous.gaps + 1) if previous else 0,
         )

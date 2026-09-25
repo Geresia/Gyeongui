@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from ..models import EventType, SegmentRun, StationDwell, StationEvent
+from ..models import EventType, SegmentRun, StationDwell, StationEvent, TravelInterval
 
 # Combined uncertainty above this (seconds) keeps the record but marks it unusable
 # for statistics. With 15 s polling each event is +-7.5 s, so a pair is ~15 s.
@@ -57,3 +57,44 @@ def derive_runs(
                 )
             )
     return segments, dwells
+
+
+def derive_links(
+    events: Iterable[StationEvent],
+    max_uncertainty: float = DEFAULT_MAX_UNCERTAINTY_SECONDS,
+) -> list[TravelInterval]:
+    """Arrival-to-arrival links and approach-to-arrival intervals.
+
+    The real-time API rarely reports departures (DESIGN §2.1), so these are the
+    primary statistics; segment/dwell stay for when departures are observed.
+    """
+    index: dict[tuple[str, int, int, EventType], StationEvent] = {}
+    for e in events:
+        index.setdefault((e.train_run_id, e.leg, e.step, e.event_type), e)
+
+    out: list[TravelInterval] = []
+    for (run_id, leg, step, etype), end in index.items():
+        if etype is not EventType.ARRIVAL:
+            continue
+        pairs = (
+            ("LINK", index.get((run_id, leg, step - 1, EventType.ARRIVAL))),
+            ("APPROACH", index.get((run_id, leg, step, EventType.APPROACH))),
+        )
+        for kind, start in pairs:
+            if start is None or end.estimated_time < start.estimated_time:
+                continue
+            unc = start.uncertainty_seconds + end.uncertainty_seconds
+            out.append(
+                TravelInterval(
+                    kind=kind,
+                    train_run_id=run_id,
+                    a=start.station,
+                    b=end.station,
+                    start=start.estimated_time,
+                    end=end.estimated_time,
+                    seconds=(end.estimated_time - start.estimated_time).total_seconds(),
+                    uncertainty_seconds=unc,
+                    usable=not (start.inferred or end.inferred) and unc <= max_uncertainty,
+                )
+            )
+    return out

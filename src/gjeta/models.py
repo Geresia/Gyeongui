@@ -99,3 +99,22 @@ class StationDwell:
     dwell_seconds: float
     uncertainty_seconds: float
     usable: bool
+
+
+@dataclass(frozen=True)
+class TravelInterval:
+    """Generic timed interval between two milestones.
+
+    kind LINK:     ARRIVAL(a) -> ARRIVAL(b), b the next station (dwell at a + run a->b)
+    kind APPROACH: APPROACH(a) -> ARRIVAL(a), with b == a
+    """
+
+    kind: str
+    train_run_id: str
+    a: str
+    b: str
+    start: datetime
+    end: datetime
+    seconds: float
+    uncertainty_seconds: float
+    usable: bool

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
 
-from ..models import SegmentRun, StationDwell
+from ..models import SegmentRun, StationDwell, TravelInterval
 from ..timeutil import day_type, time_band
 
 ANY = "*"
@@ -17,6 +17,8 @@ DEFAULT_MIN_SAMPLES = 10
 class Kind(str, Enum):
     SEGMENT = "SEGMENT"   # key (from, to)
     DWELL = "DWELL"       # key (station, next_station)
+    LINK = "LINK"         # key (station, next_station): arrival -> next arrival
+    APPROACH = "APPROACH" # key (station, station): approach -> arrival
 
 
 class Level(str, Enum):
@@ -79,6 +81,11 @@ class TravelStats:
         for d in dwells:
             if d.usable:
                 self.add(Kind.DWELL, d.station, d.next_station, d.arrival_time, d.dwell_seconds)
+
+    def add_intervals(self, intervals: Iterable[TravelInterval]) -> None:
+        for iv in intervals:
+            if iv.usable:
+                self.add(Kind(iv.kind), iv.a, iv.b, iv.start, iv.seconds)
 
     def lookup(self, kind: Kind, a: str, b: str, when: datetime) -> Lookup:
         for level, key in self._keys(kind, a, b, when):

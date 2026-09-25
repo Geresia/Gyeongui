@@ -89,17 +89,42 @@ def test_format_minutes_never_shows_seconds():
     assert format_minutes(baseline_eta(pos, "회기", NOW, STATS)) == "약 6분 후 (예상 범위 5~7분)"
 
 
-def test_position_from_tracker_approach_counts_as_running():
+def test_position_from_tracker_approach_state():
     t0 = kst(2026, 9, 25, 8, 0)
     tr = TrainTracker(NET)
     for o in [obs("1", "왕십리", "ARRIVE", "용문", t0),
-              obs("1", "왕십리", "DEPART", "용문", t0 + timedelta(seconds=10)),
               obs("1", "청량리", "APPROACH", "용문", t0 + timedelta(seconds=120))]:
         tr.ingest(o)
     pos = position_from_run(tr.runs["2026-09-25:1"])
-    assert pos.motion is Motion.RUNNING and pos.station == "왕십리"
-    assert pos.path[0] == "청량리" and pos.path[-1] == "용문"
-    assert pos.since == t0 + timedelta(seconds=5)
+    assert pos.motion is Motion.APPROACHING and pos.station == "청량리"
+    assert pos.path[0] == "회기" and pos.path[-1] == "용문"
+    assert pos.since == t0 + timedelta(seconds=120)  # exact: recptnDt of the change
+
+
+LINK_STATS = make_stats(
+    seg={},
+    dwell={},
+)
+for (a, b), xs in {("왕십리", "청량리"): [150, 160, 170], ("청량리", "회기"): [130, 140, 150]}.items():
+    for x in xs:
+        LINK_STATS.add(Kind.LINK, a, b, NOW, x)
+for x in (20, 25, 30):
+    LINK_STATS.add(Kind.APPROACH, "청량리", "청량리", NOW, x)
+
+
+def test_eta_uses_links_when_departures_are_not_reported():
+    pos = TrainPosition("r", Motion.DWELLING, "왕십리", ("청량리", "회기"), since=NOW - timedelta(seconds=155),
+                        last_seen=NOW)
+    r = baseline_eta(pos, "회기", NOW, LINK_STATS)
+    # remaining of link 왕십리->청량리 given 155 s spent: samples {160,170} -> {5,15}, median 10; + link 140
+    assert r.eta_seconds == 150
+    assert [c.kind for c in r.components] == [Kind.LINK, Kind.LINK]
+
+
+def test_eta_approaching_target_and_beyond():
+    pos = TrainPosition("r", Motion.APPROACHING, "청량리", ("회기",), since=NOW - timedelta(seconds=10), last_seen=NOW)
+    assert baseline_eta(pos, "청량리", NOW, LINK_STATS).eta_seconds == 15   # {10,15,20} -> 15
+    assert baseline_eta(pos, "회기", NOW, LINK_STATS).eta_seconds == 15 + 140
 
 
 def test_backtest_on_synthetic_days_is_accurate():

@@ -12,7 +12,7 @@ from datetime import date, datetime
 
 from ..models import EventType, PositionObservation, StationEvent
 from ..stations import Network
-from ..tracking.derive import derive_runs
+from ..tracking.derive import derive_links, derive_runs
 from ..tracking.tracker import TrainTracker
 from .baseline import EtaResult, baseline_eta, position_from_run
 from .evaluation import Evaluation, evaluate
@@ -31,6 +31,7 @@ def build_stats(observations: Iterable[PositionObservation], network: Network, m
     stats = TravelStats(min_samples=min_samples)
     stats.add_segments(segments)
     stats.add_dwells(dwells)
+    stats.add_intervals(derive_links(events))
     return stats
 
 
