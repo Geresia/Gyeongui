@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>경의중앙 ETA — 화면 시안</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=block" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0B3036; --teal: #77C4A3; --teal-d: #3E9A78; --teal-bg: #E6F4EE;
+    --bg: #F3F6F5; --card: #FFFFFF; --text: #13262A; --sub: #5E7174; --line: #E2E8E7;
+    --late: #D9692B; --late-bg: #FCEEE5; --ok: #2F8F68; --ok-bg: #E4F3EC;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Noto Sans KR', sans-serif; color: var(--text); background: #DCE5E3; }
+  .stage { display: flex; gap: 48px; padding: 56px 64px 40px; justify-content: center; }
+  .overview-head { display: flex; align-items: center; gap: 20px; padding: 48px 64px 0; justify-content: center; }
+  .overview-head img { height: 72px; }
+  .overview-foot { text-align: center; color: var(--sub); font-size: 15px; padding-bottom: 40px; }
+  .caption { text-align: center; font-weight: 700; font-size: 20px; margin-top: 18px; color: var(--navy); }
+  .caption span { display: block; font-weight: 400; font-size: 15px; color: var(--sub); margin-top: 4px; }
+
+  .phone { width: 390px; height: 844px; background: var(--bg); border-radius: 48px; overflow: hidden;
+           position: relative; box-shadow: 0 24px 60px rgba(11,48,54,.22), 0 0 0 10px #10181a; }
+  .status { height: 48px; display: flex; justify-content: space-between; align-items: center;
+            padding: 0 28px 0 32px; font-weight: 700; font-size: 15px; }
+  .status .icons { display: flex; gap: 6px; align-items: center; }
+  .status .bat { width: 26px; height: 12px; border: 2px solid var(--text); border-radius: 4px; position: relative; }
+  .status .bat::after { content: ''; position: absolute; inset: 1px 5px 1px 1px; background: var(--text); border-radius: 1px; }
+  .appbar { padding: 6px 22px 14px; display: flex; align-items: center; justify-content: space-between; }
+  .appbar h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+  .appbar .small { font-size: 13px; color: var(--sub); margin-top: 2px; }
+  .appbar img { width: 36px; height: 36px; border-radius: 10px; }
+  .content { padding: 0 16px; }
+  .tabs { display: flex; background: #E3EAE8; border-radius: 12px; padding: 4px; margin-bottom: 14px; }
+  .tabs div { flex: 1; text-align: center; padding: 9px 0; font-size: 14px; font-weight: 500; color: var(--sub); border-radius: 9px; }
+  .tabs .on { background: var(--card); color: var(--text); font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .card { background: var(--card); border-radius: 18px; padding: 16px 18px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(11,48,54,.06); }
+  .row { display: flex; justify-content: space-between; align-items: flex-start; }
+  .dest { font-size: 17px; font-weight: 700; }
+  .dest small { font-size: 13px; color: var(--sub); font-weight: 400; margin-left: 6px; }
+  .eta { font-size: 30px; font-weight: 800; letter-spacing: -1px; color: var(--navy); line-height: 1.15; }
+  .eta small { font-size: 16px; font-weight: 700; letter-spacing: 0; }
+  .range { font-size: 13px; color: var(--sub); margin-top: 2px; }
+  .badge { display: inline-block; font-size: 12.5px; font-weight: 700; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
+  .late { background: var(--late-bg); color: var(--late); }
+  .ok { background: var(--ok-bg); color: var(--ok); }
+  .meta { display: flex; gap: 14px; font-size: 13px; color: var(--sub); margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .meta b { color: var(--text); font-weight: 500; }
+  .hint { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 13px; color: var(--late); }
+  .hint::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--late); flex: none; }
+  .mini { display: flex; align-items: center; gap: 0; margin: 14px 2px 2px; }
+  .mini i { width: 10px; height: 10px; border-radius: 50%; border: 2.5px solid var(--teal); background: #fff; flex: none; }
+  .mini i.here { width: 14px; height: 14px; background: var(--navy); border-color: var(--navy); }
+  .mini b { flex: 1; height: 4px; background: var(--teal); }
+  .mini b.done { background: #C9D6D3; }
+  .mini i.done { border-color: #C9D6D3; }
+  .mini-l { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--sub); margin: 5px -4px 0; }
+  .section-t { font-size: 14px; font-weight: 700; color: var(--sub); margin: 18px 4px 10px; }
+
+  /* train detail */
+  .hero { background: var(--navy); color: #fff; border-radius: 20px; padding: 16px 20px; margin-bottom: 12px; }
+  .hero .label { font-size: 13px; color: #A9C9C6; }
+  .hero .pos { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .hero .pos em { font-style: normal; color: var(--teal); margin: 0 6px; }
+  .hero .delay { margin-top: 12px; display: flex; gap: 8px; align-items: center; font-size: 14px; }
+  .hero .delay .badge { background: rgba(217,105,43,.18); color: #FFB488; }
+  .tl { position: relative; padding: 4px 0 0; }
+  .stop { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; min-height: 43px; position: relative; }
+  .stop::before { content: ''; position: absolute; left: 13px; top: 0; bottom: 0; width: 4px; background: var(--teal); }
+  .stop.first::before { top: 50%; }
+  .stop.last::before { bottom: 50%; }
+  .stop.passed::before { background: #C9D6D3; }
+  .dot { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 3.5px solid var(--teal); position: relative; z-index: 1; margin-left: 7px; }
+  .passed .dot { border-color: #C9D6D3; }
+  .stop .name { font-size: 16px; font-weight: 500; padding-left: 8px; }
+  .passed .name { color: #9AABAA; }
+  .stop .t { text-align: right; font-size: 17px; font-weight: 800; color: var(--navy); }
+  .stop .t small { display: block; font-size: 11.5px; font-weight: 400; color: var(--sub); }
+  .train-marker { display: grid; grid-template-columns: 30px 1fr; align-items: center; height: 30px; position: relative; }
+  .train-marker::before { content: ''; position: absolute; left: 13px; top: 0; bottom: 0; width: 4px; background: linear-gradient(#C9D6D3 50%, var(--teal) 50%); }
+  .train-marker .tr { width: 30px; height: 22px; border-radius: 7px; background: var(--navy); z-index: 1; display: flex; align-items: center; justify-content: center; }
+  .train-marker .tr::after { content: ''; width: 14px; height: 6px; border-radius: 2px; background: var(--teal); }
+  .train-marker span { font-size: 12.5px; color: var(--navy); font-weight: 700; padding-left: 10px; }
+  .factor { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; font-size: 15px; }
+  .factor + .factor { border-top: 1px solid var(--line); }
+  .factor .tag { font-size: 11px; color: var(--sub); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; margin-left: 6px; font-weight: 500; }
+  .factor b { color: var(--late); }
+  .note { font-size: 12px; color: var(--sub); margin-top: 8px; line-height: 1.5; }
+
+  /* route */
+  .od { background: var(--card); border-radius: 18px; padding: 6px 16px; margin-bottom: 14px; position: relative; }
+  .od div { display: flex; align-items: center; gap: 12px; padding: 12px 0; font-size: 17px; font-weight: 700; }
+  .od div + div { border-top: 1px solid var(--line); }
+  .od i { width: 12px; height: 12px; border-radius: 50%; border: 3px solid var(--teal); flex: none; }
+  .od div:last-child i { background: var(--navy); border-color: var(--navy); }
+  .od .swap { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--sub); font-size: 18px; font-weight: 700; }
+  .big { text-align: center; padding: 22px 18px 18px; }
+  .big .lbl { font-size: 14px; color: var(--sub); }
+  .big .v { font-size: 52px; font-weight: 800; color: var(--navy); letter-spacing: -2px; line-height: 1.1; margin-top: 4px; }
+  .big .v small { font-size: 24px; letter-spacing: 0; }
+  .big .arr { font-size: 16px; margin-top: 6px; }
+  .big .arr b { font-weight: 700; }
+  .compare { display: flex; margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .compare div { flex: 1; font-size: 13px; color: var(--sub); }
+  .compare div + div { border-left: 1px solid var(--line); }
+  .compare b { display: block; font-size: 18px; color: var(--text); margin-top: 2px; }
+  .compare .l b { color: var(--late); }
+  .bar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; margin: 12px 0 8px; }
+  .bar .w { background: #C9D6D3; flex: 3; }
+  .bar .r { background: var(--teal); flex: 35; }
+  .bar .d { background: var(--late); flex: 6; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--sub); }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+  .opt .dest { font-size: 16px; }
+  .opt .when { font-size: 13px; color: var(--sub); margin-top: 2px; }
+  .opt .dur { font-size: 20px; font-weight: 800; color: var(--navy); text-align: right; }
+  .opt .dur small { display: block; font-size: 12px; font-weight: 400; color: var(--sub); }
+  .opt.best { outline: 2px solid var(--teal); }
+  .pill { font-size: 11px; font-weight: 700; color: var(--teal-d); background: var(--teal-bg); padding: 2px 7px; border-radius: 6px; margin-left: 6px; vertical-align: 2px; }
+
+  .tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 84px; background: #fff; border-top: 1px solid var(--line);
+            display: flex; padding: 10px 12px 0; }
+  .tabbar div { flex: 1; text-align: center; font-size: 11.5px; color: #9AABAA; font-weight: 500; }
+  .tabbar div::before { content: ''; display: block; width: 24px; height: 24px; margin: 0 auto 4px; border-radius: 7px; background: #D5DFDD; }
+  .tabbar .on { color: var(--navy); font-weight: 700; }
+  .tabbar .on::before { background: var(--navy); }
+  .home { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 134px; height: 5px; border-radius: 3px; background: #13262A; }
+
+  body.single { background: transparent; }
+  body.single .overview-head, body.single .overview-foot, body.single .caption { display: none; }
+  body.single .stage { padding: 10px; gap: 0; justify-content: flex-start; }
+  body.single .phone { box-shadow: 0 0 0 10px #10181a; }
+  body.single .wrap { display: none; }
+  body.single .wrap.show { display: block; }
+</style>
+</head>
+<body>
+<div class="overview-head"><img src="../assets/logo-light.png" alt="경의중앙 ETA"></div>
+<div class="stage">
+
+<!-- 1. 역 도착 -->
+<div class="wrap" id="station">
+<div class="phone">
+  <div class="status"><span>8:03</span><span class="icons">▂▄▆ <span class="bat"></span></span></div>
+  <div class="appbar"><div><h1>상봉역</h1><div class="small">08:03:10 기준 · 실시간</div></div><img src="../assets/logo-icon.png" alt=""></div>
+  <div class="content">
+    <div class="tabs"><div class="on">용문 방면</div><div>문산 방면</div></div>
+
+    <div class="card">
+      <div class="row">
+        <div><div class="dest">용문행 <small>K5123</small></div><div class="eta">약 5<small>분 후</small></div><div class="range">예상 범위 4~7분 · 08:08 도착</div></div>
+        <span class="badge late">평소보다 +2분</span>
+      </div>
+      <div class="mini"><i class="done"></i><b class="done"></b><i class="here"></i><b></b><i></i><b></b><i></i></div>
+      <div class="mini-l"><span>회기</span><span>회기→중랑</span><span>중랑</span><span>상봉</span></div>
+      <div class="hint">선행 열차 영향 가능성</div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div><div class="dest">덕소행 <small>K5127</small></div><div class="eta">약 11<small>분 후</small></div><div class="range">예상 범위 10~13분 · 08:14 도착</div></div>
+        <span class="badge ok">정상 운행</span>
+      </div>
+      <div class="meta"><span>현재 <b>왕십리</b></span><span><b>4</b>정거장 전</span></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div><div class="dest">용문행 <small>K5131</small></div><div class="eta">약 19<small>분 후</small></div><div class="range">예상 범위 16~23분 · 08:22 도착</div></div>
+        <span class="badge late">평소보다 +3분</span>
+      </div>
+      <div class="meta"><span>현재 <b>이촌</b></span><span><b>9</b>정거장 전</span></div>
+      <div class="hint">간선열차 운행 영향 가능성</div>
+    </div>
+  </div>
+  <div class="tabbar"><div class="on">역 도착</div><div>경로</div><div>열차</div><div>즐겨찾기</div></div>
+  <div class="home"></div>
+</div>
+<div class="caption">역 도착 화면<span>이 역에 언제 오나 · 예상 범위와 지연 표시</span></div>
+</div>
+
+<!-- 2. 열차 상세 -->
+<div class="wrap" id="train">
+<div class="phone">
+  <div class="status"><span>8:03</span><span class="icons">▂▄▆ <span class="bat"></span></span></div>
+  <div class="appbar"><div><h1>K5123 용문행</h1><div class="small">08:03:10 기준 · 실시간</div></div><img src="../assets/logo-icon.png" alt=""></div>
+  <div class="content">
+    <div class="hero">
+      <div class="label">현재 위치</div>
+      <div class="pos">회기<em>→</em>중랑</div>
+      <div class="delay"><span class="badge">평소보다 약 +2분</span><span style="color:#A9C9C6">정상 대비 느리게 운행 중</span></div>
+    </div>
+
+    <div class="card" style="padding:10px 16px">
+      <div class="tl">
+        <div class="stop first passed"><span class="dot"></span><span class="name">회기</span><span class="t" style="color:#9AABAA;font-size:13px;font-weight:500">07:59 출발</span></div>
+        <div class="train-marker"><span class="tr"></span><span>운행 중</span></div>
+        <div class="stop"><span class="dot"></span><span class="name">중랑</span><span class="t">2분<small>1~3분</small></span></div>
+        <div class="stop"><span class="dot"></span><span class="name">상봉</span><span class="t">5분<small>4~7분</small></span></div>
+        <div class="stop"><span class="dot"></span><span class="name">망우</span><span class="t">7분<small>6~10분</small></span></div>
+        <div class="stop"><span class="dot"></span><span class="name">양원</span><span class="t">10분<small>8~13분</small></span></div>
+        <div class="stop last"><span class="dot"></span><span class="name">구리</span><span class="t">12분<small>10~16분</small></span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:700;font-size:15px;margin-bottom:2px">지연 요인</div>
+      <div class="factor"><span>선행 열차 영향<span class="tag">추정</span></span><b>+1분</b></div>
+      <div class="factor"><span>역 정차 지연 (청량리)<span class="tag">관측</span></span><b>+1분</b></div>
+      <div class="note">공식 발표가 없는 원인은 ‘추정’으로 표시합니다.</div>
+    </div>
+  </div>
+  <div class="tabbar"><div>역 도착</div><div>경로</div><div class="on">열차</div><div>즐겨찾기</div></div>
+  <div class="home"></div>
+</div>
+<div class="caption">열차 상세 화면<span>지금 어디 있나 · 역별 예상 도착 · 왜 늦나</span></div>
+</div>
+
+<!-- 3. 경로 A→B -->
+<div class="wrap" id="route">
+<div class="phone">
+  <div class="status"><span>8:03</span><span class="icons">▂▄▆ <span class="bat"></span></span></div>
+  <div class="appbar"><div><h1>경로</h1><div class="small">지금 출발 기준</div></div><img src="../assets/logo-icon.png" alt=""></div>
+  <div class="content">
+    <div class="od"><div><i></i>홍대입구</div><div><i></i>구리</div><span class="swap">⇅</span></div>
+
+    <div class="card big">
+      <div class="lbl">실제 예상 소요시간</div>
+      <div class="v">44<small>분</small></div>
+      <div class="arr">예상 도착 <b>08:47</b></div>
+      <div class="bar"><span class="w"></span><span class="r"></span><span class="d"></span></div>
+      <div class="legend"><span><i style="background:#C9D6D3"></i>대기 3분</span><span><i style="background:var(--teal)"></i>이동 35분</span><span><i style="background:var(--late)"></i>지연 6분</span></div>
+      <div class="compare">
+        <div>시간표 기준<b>38분</b></div>
+        <div class="l">현재 추가 지연<b>+6분</b></div>
+      </div>
+    </div>
+
+    <div class="section-t">탈 수 있는 열차</div>
+    <div class="card opt best">
+      <div class="row">
+        <div><div class="dest">용문행 K5131<span class="pill">추천</span></div><div class="when">08:06 탑승 · 3분 대기</div></div>
+        <div class="dur">44분<small>08:47 도착</small></div>
+      </div>
+    </div>
+    <div class="card opt">
+      <div class="row">
+        <div><div class="dest">덕소행 K5135</div><div class="when">08:14 탑승 · 11분 대기</div></div>
+        <div class="dur">49분<small>08:52 도착</small></div>
+      </div>
+    </div>
+  </div>
+  <div class="tabbar"><div>역 도착</div><div class="on">경로</div><div>열차</div><div>즐겨찾기</div></div>
+  <div class="home"></div>
+</div>
+<div class="caption">경로 화면<span>지금 출발하면 실제로 얼마나 걸리나</span></div>
+</div>
+
+</div>
+<div class="overview-foot">화면 시안 · 표시된 시각과 수치는 예시입니다</div>
+<script>
+  const id = location.hash.slice(1);
+  if (id) {
+    document.body.classList.add('single');
+    document.getElementById(id).classList.add('show');
+  }
+</script>
+</body>
+</html>

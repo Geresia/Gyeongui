@@ -13,6 +13,12 @@
 - Phase 1 설계 (데이터 소스 등급, DB, 수집기, 추적 엔진, Baseline ETA): [`docs/DESIGN.md`](docs/DESIGN.md)
 - DB schema: [`db/schema.sql`](db/schema.sql)
 
+## 화면 시안
+
+![화면 시안](docs/assets/screens/overview.png)
+
+역 도착 / 열차 상세 / 경로 화면 시안입니다. 수치는 예시이고, 원본은 [`docs/mockups/screens.html`](docs/mockups/screens.html) 입니다.
+
 ## 현재 상태 (Phase 1 / M1~M2 코어)
 
 | 구성 | 상태 |
