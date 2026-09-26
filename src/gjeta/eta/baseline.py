@@ -29,6 +29,7 @@ LEVEL_WEIGHT = {Level.L0: 1.0, Level.L1: 0.95, Level.L2: 0.85, Level.MISSING: 0.
 FRESH_SECONDS = 30.0
 STALE_SECONDS = 180.0
 ABNORMAL_FACTOR = 0.3
+INTERPOLATED_FACTOR = 0.7
 
 
 class Motion(str, Enum):
@@ -58,6 +59,7 @@ class Component:
     p50: float
     p80: float
     conditional: bool = False
+    interpolated: bool = False   # target lies inside an unreported span (e.g. 대곡 in 행신->곡산)
 
 
 @dataclass(frozen=True)
@@ -152,13 +154,26 @@ def _hop(stats: TravelStats, a: str, b: str, now: datetime, elapsed: float | Non
 
 def _link_jump(stats: TravelStats, stops: tuple[str, ...], i: int, now: datetime) -> int | None:
     """When the adjacent link has no stats, look for a LINK that skips unreported
-    stations (e.g. 행신 -> 곡산 over 능곡·대곡). Never jumps past the target (last stop)."""
+    stations (e.g. 행신 -> 곡산 over 능곡·대곡)."""
     if stats.lookup(Kind.LINK, stops[i], stops[i + 1], now).level is not Level.MISSING:
         return None
     for j in range(i + 2, min(i + 1 + MAX_LINK_SPAN, len(stops))):
         if stats.lookup(Kind.LINK, stops[i], stops[j], now).level is not Level.MISSING:
             return j
     return None
+
+
+def _interpolate(c: Component, fraction: float, elapsed: float | None) -> Component:
+    """Share of a spanning LINK up to an unreported station. The API never reports the
+    train there, so this is an estimate: fraction of the whole link minus time spent.
+    TODO: calibrate fractions per station from Korail's day-after run records (D6b)."""
+    spent = elapsed or 0.0
+
+    def cut(q: float) -> float:
+        return max(0.0, q * fraction - spent)
+
+    return Component(c.kind, c.a, c.b, c.level, c.n, cut(c.p20), cut(c.p50), cut(c.p80),
+                     conditional=elapsed is not None, interpolated=True)
 
 
 def baseline_eta(pos: TrainPosition, target: str, now: datetime, stats: TravelStats) -> EtaResult | None:
@@ -170,34 +185,42 @@ def baseline_eta(pos: TrainPosition, target: str, now: datetime, stats: TravelSt
     parts: list[Component] = []
     abnormal = False
 
-    # 1) what is left of the current interval
+    # 1) approaching: what is left until arrival at the entered station
     if pos.motion is Motion.APPROACHING:
         lk = stats.lookup(Kind.APPROACH, pos.station, pos.station, now)
         c, ab = _component(Kind.APPROACH, pos.station, pos.station, lk, elapsed)
         parts.append(c)
         abnormal |= ab
-        stops = (pos.station,) + pos.path[: pos.path.index(target) + 1] if not approaching_target else ()
+        first_elapsed, first_dwelling = None, True
     else:
-        first = pos.path[0]
-        hop, ab = _hop(stats, pos.station, first, now, elapsed, pos.motion is Motion.DWELLING)
-        parts.extend(hop)
-        abnormal |= ab
-        stops = pos.path[: pos.path.index(target) + 1]
+        first_elapsed, first_dwelling = elapsed, pos.motion is Motion.DWELLING
 
-    # 2) full hops up to the target (each includes the dwell at its start station).
+    # 2) hops from the current station to the target. Each LINK covers the dwell at its
+    # start station; the first one is conditioned on the time already spent. A LINK may
+    # skip unreported stations; if the target is one of them, its share is interpolated.
     # Stats are looked up at `now`; for long horizons the time band may shift -
     # acceptable for the baseline.
-    i = 0
-    while i < len(stops) - 1:
-        j = _link_jump(stats, stops, i, now)
+    full = (pos.station,) + pos.path
+    t_idx = 0 if approaching_target else full.index(target)
+    i, first = 0, True
+    while i < t_idx:
+        el = first_elapsed if first else None
+        dwelling = first_dwelling if first else True
+        j = _link_jump(stats, full, i, now)
         if j is None:
-            hop, _ = _hop(stats, stops[i], stops[i + 1], now, None, True)
+            hop, ab = _hop(stats, full[i], full[i + 1], now, el, dwelling)
             j = i + 1
         else:
-            c, _ = _component(Kind.LINK, stops[i], stops[j], stats.lookup(Kind.LINK, stops[i], stops[j], now), None)
-            hop = [c]
+            lk = stats.lookup(Kind.LINK, full[i], full[j], now)
+            if j > t_idx:
+                c, ab = _component(Kind.LINK, full[i], full[j], lk, None), False
+                hop = [_interpolate(c[0], (t_idx - i) / (j - i), el)]
+            else:
+                c, ab = _component(Kind.LINK, full[i], full[j], lk, el)
+                hop = [c]
         parts.extend(hop)
-        i = j
+        abnormal |= ab if first else False
+        i, first = j, False
 
     # Comonotonic sum: quantiles add up (conservative, DESIGN §7).
     eta = sum(p.p50 for p in parts)
@@ -210,6 +233,8 @@ def baseline_eta(pos: TrainPosition, target: str, now: datetime, stats: TravelSt
     confidence *= _staleness_factor((now - pos.last_seen).total_seconds())
     if abnormal:
         confidence *= ABNORMAL_FACTOR
+    if any(p.interpolated for p in parts):
+        confidence *= INTERPOLATED_FACTOR
     if elapsed is None:
         confidence *= 0.8  # we do not know when the current phase started
 

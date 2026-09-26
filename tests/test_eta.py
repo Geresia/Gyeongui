@@ -158,3 +158,18 @@ def test_eta_jumps_over_unreported_stations():
     assert [(c.kind, c.a, c.b) for c in r.components][1:] == [(Kind.LINK, "행신", "곡산"), (Kind.LINK, "곡산", "백마")]
     # an unreported station itself stays unpredictable (MISSING -> lower confidence)
     assert baseline_eta(pos, "대곡", NOW, st).confidence < r.confidence
+
+
+def test_eta_interpolates_unreported_target_station():
+    st = TravelStats(min_samples=3)
+    for x in (540, 600, 660):
+        st.add(Kind.LINK, "행신", "곡산", NOW, x)
+    pos = TrainPosition("r", Motion.DWELLING, "행신", ("능곡", "대곡", "곡산"),
+                        since=NOW - timedelta(seconds=60), last_seen=NOW)
+    to_gok = baseline_eta(pos, "곡산", NOW, st)
+    to_dae = baseline_eta(pos, "대곡", NOW, st)
+    to_neung = baseline_eta(pos, "능곡", NOW, st)
+    assert to_gok.eta_seconds == 540                  # conditional: {480,540,600} -> 540
+    assert to_dae.eta_seconds == 600 * 2 / 3 - 60     # 2 of 3 steps, minus time spent
+    assert to_neung.eta_seconds == 600 * 1 / 3 - 60
+    assert to_dae.components[-1].interpolated and to_dae.confidence < to_gok.confidence
