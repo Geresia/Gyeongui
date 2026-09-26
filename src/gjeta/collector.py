@@ -90,6 +90,17 @@ def window_end(now: datetime, window: tuple[dtime, dtime]) -> datetime | None:
     return datetime.combine(end_day, end, tzinfo=KST)
 
 
+def minutes_until_window(now: datetime, window: tuple[dtime, dtime]) -> float:
+    """Minutes until the window next opens (0 if inside it)."""
+    if window_end(now, window) is not None:
+        return 0.0
+    now = now.astimezone(KST)
+    start = datetime.combine(now.date(), window[0], tzinfo=KST)
+    if start <= now:
+        start += timedelta(days=1)
+    return (start - now).total_seconds() / 60
+
+
 def paced_interval(interval: float, now: datetime, end: datetime, remaining_calls: int | None) -> float:
     """Stretch the interval so the remaining budget lasts until the window ends."""
     if remaining_calls is None:
@@ -133,7 +144,7 @@ def fetch_with_retry(api_key: str, max_attempts: int = RETRIES) -> tuple[RawResp
 
 
 def run(api_key: str, data_dir: Path, interval: float, daily_limit: int, window: tuple[dtime, dtime],
-        single_window: bool = False) -> None:
+        single_window: bool = False, max_wait_minutes: float | None = None) -> None:
     store = JsonlRawStore(data_dir)
     counter = CallCounter(data_dir)
     tracker = TrainTracker(load_default_network())
@@ -149,6 +160,9 @@ def run(api_key: str, data_dir: Path, interval: float, daily_limit: int, window:
     log.info("collector started: interval=%ss window=%s-%s daily_limit=%s data_dir=%s",
              interval, window[0], window[1], daily_limit or "none", data_dir)
     collected = False
+    if max_wait_minutes is not None and minutes_until_window(datetime.now(KST), window) > max_wait_minutes:
+        log.info("window %s-%s is not near; nothing to do", window[0], window[1])
+        return
     while not stopping:
         started = time.monotonic()
         now = datetime.now(KST)
@@ -191,12 +205,15 @@ def main() -> None:
                         help="KST collection window HH:MM-HH:MM, may cross midnight")
     parser.add_argument("--single-window", action="store_true",
                         help="exit once the current/next window has ended (for scheduled CI runs)")
+    parser.add_argument("--max-wait-minutes", type=float, default=None,
+                        help="exit immediately if the window opens later than this (backup CI schedules)")
     args = parser.parse_args()
     api_key = os.environ.get("SEOUL_API_KEY")
     if not api_key:
         raise SystemExit("SEOUL_API_KEY is not set")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    run(api_key, args.data_dir, args.interval, args.daily_limit, parse_window(args.window), args.single_window)
+    run(api_key, args.data_dir, args.interval, args.daily_limit, parse_window(args.window), args.single_window,
+        args.max_wait_minutes)
 
 
 if __name__ == "__main__":

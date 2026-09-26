@@ -18,6 +18,7 @@ from enum import Enum
 
 from ..models import EventType
 from ..tracking.tracker import RunState
+from ..tracking.derive import MAX_LINK_SPAN
 from .stats import Kind, Level, Lookup, TravelStats, quantile
 
 MODEL_VERSION = "baseline-v0"
@@ -149,6 +150,17 @@ def _hop(stats: TravelStats, a: str, b: str, now: datetime, elapsed: float | Non
     return parts, abnormal or ab
 
 
+def _link_jump(stats: TravelStats, stops: tuple[str, ...], i: int, now: datetime) -> int | None:
+    """When the adjacent link has no stats, look for a LINK that skips unreported
+    stations (e.g. 행신 -> 곡산 over 능곡·대곡). Never jumps past the target (last stop)."""
+    if stats.lookup(Kind.LINK, stops[i], stops[i + 1], now).level is not Level.MISSING:
+        return None
+    for j in range(i + 2, min(i + 1 + MAX_LINK_SPAN, len(stops))):
+        if stats.lookup(Kind.LINK, stops[i], stops[j], now).level is not Level.MISSING:
+            return j
+    return None
+
+
 def baseline_eta(pos: TrainPosition, target: str, now: datetime, stats: TravelStats) -> EtaResult | None:
     """ETA of `pos`'s train arriving at `target`. None if target is not ahead."""
     approaching_target = pos.motion is Motion.APPROACHING and target == pos.station
@@ -175,9 +187,17 @@ def baseline_eta(pos: TrainPosition, target: str, now: datetime, stats: TravelSt
     # 2) full hops up to the target (each includes the dwell at its start station).
     # Stats are looked up at `now`; for long horizons the time band may shift -
     # acceptable for the baseline.
-    for a, b in zip(stops, stops[1:]):
-        hop, _ = _hop(stats, a, b, now, None, True)
+    i = 0
+    while i < len(stops) - 1:
+        j = _link_jump(stats, stops, i, now)
+        if j is None:
+            hop, _ = _hop(stats, stops[i], stops[i + 1], now, None, True)
+            j = i + 1
+        else:
+            c, _ = _component(Kind.LINK, stops[i], stops[j], stats.lookup(Kind.LINK, stops[i], stops[j], now), None)
+            hop = [c]
         parts.extend(hop)
+        i = j
 
     # Comonotonic sum: quantiles add up (conservative, DESIGN §7).
     eta = sum(p.p50 for p in parts)

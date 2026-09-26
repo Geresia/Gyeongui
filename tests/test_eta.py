@@ -145,3 +145,16 @@ def test_backtest_on_synthetic_days_is_accurate():
     assert rows["0-5m"]["n"] > 0
     assert rows["0-5m"]["median_ae"] <= 15
     assert rows["5-10m"]["median_ae"] <= 20
+
+
+def test_eta_jumps_over_unreported_stations():
+    st = TravelStats(min_samples=3)
+    for x in (400, 420, 440):
+        st.add(Kind.LINK, "행신", "곡산", NOW, x)   # 능곡·대곡 never reported
+    for x in (100, 110, 120):
+        st.add(Kind.LINK, "곡산", "백마", NOW, x)
+    pos = TrainPosition("r", Motion.RUNNING, "강매", ("행신", "능곡", "대곡", "곡산", "백마"), since=NOW, last_seen=NOW)
+    r = baseline_eta(pos, "백마", NOW, st)
+    assert [(c.kind, c.a, c.b) for c in r.components][1:] == [(Kind.LINK, "행신", "곡산"), (Kind.LINK, "곡산", "백마")]
+    # an unreported station itself stays unpredictable (MISSING -> lower confidence)
+    assert baseline_eta(pos, "대곡", NOW, st).confidence < r.confidence

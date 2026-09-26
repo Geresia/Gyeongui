@@ -105,7 +105,7 @@ class StationDwell:
 class TravelInterval:
     """Generic timed interval between two milestones.
 
-    kind LINK:     ARRIVAL(a) -> ARRIVAL(b), b the next station (dwell at a + run a->b)
+    kind LINK:     ARRIVAL(a) -> ARRIVAL(b), b the next *reported* station (dwell at a + run a->b)
     kind APPROACH: APPROACH(a) -> ARRIVAL(a), with b == a
     """
 

@@ -45,3 +45,12 @@ def test_read_raw_supports_gzipped_run_files(tmp_path):
     files = raw_files(tmp_path, [t.date()])
     assert len(files) == 1
     assert [r.api_code for r in read_raw(files)] == ["INFO-000"]
+
+
+def test_minutes_until_window():
+    from gjeta.collector import minutes_until_window
+
+    am = parse_window("06:30-10:30")
+    assert minutes_until_window(kst(2026, 9, 26, 6, 20), am) == 10
+    assert minutes_until_window(kst(2026, 9, 26, 7, 0), am) == 0
+    assert minutes_until_window(kst(2026, 9, 26, 10, 31), am) == 19 * 60 + 59

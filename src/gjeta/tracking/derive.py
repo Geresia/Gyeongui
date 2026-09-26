@@ -59,6 +59,21 @@ def derive_runs(
     return segments, dwells
 
 
+# Some stations are never reported by the API (능곡·대곡, verified 2026-09-26): the
+# train stays "arrived at 행신" until it approaches 곡산. A LINK may therefore span up
+# to this many steps, from the previous *observed* arrival.
+MAX_LINK_SPAN = 3
+
+
+def _previous_observed_arrival(index, run_id: str, leg: int, step: int) -> StationEvent | None:
+    for back in range(1, MAX_LINK_SPAN + 1):
+        e = index.get((run_id, leg, step - back, EventType.ARRIVAL))
+        if e is not None and not e.inferred:
+            return e
+    # fall back to the adjacent (possibly inferred) arrival so the record still exists
+    return index.get((run_id, leg, step - 1, EventType.ARRIVAL))
+
+
 def derive_links(
     events: Iterable[StationEvent],
     max_uncertainty: float = DEFAULT_MAX_UNCERTAINTY_SECONDS,
@@ -77,7 +92,7 @@ def derive_links(
         if etype is not EventType.ARRIVAL:
             continue
         pairs = (
-            ("LINK", index.get((run_id, leg, step - 1, EventType.ARRIVAL))),
+            ("LINK", _previous_observed_arrival(index, run_id, leg, step)),
             ("APPROACH", index.get((run_id, leg, step, EventType.APPROACH))),
         )
         for kind, start in pairs:

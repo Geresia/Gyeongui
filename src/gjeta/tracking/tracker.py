@@ -124,8 +124,7 @@ class TrainTracker:
 
         t = obs.event_time
         if run is None or run.pattern.pattern_id != pattern.pattern_id or run.direction != direction:
-            self._start_run(obs, pattern, direction, terminal, station, t, previous=run)
-            return []
+            return self._start_run(obs, pattern, direction, terminal, station, t, previous=run)
 
         run.last_seen = max(run.last_seen, t)
         poll_gap = (obs.observed_at - run.last_observed_at).total_seconds()
@@ -186,7 +185,9 @@ class TrainTracker:
         station: str,
         t: datetime,
         previous: RunState | None,
-    ) -> None:
+    ) -> list[StationEvent]:
+        """Begin tracking. With recptnDt the current state's start time is known exactly,
+        so the first milestone is emitted as an observed event; otherwise nothing is."""
         run = RunState(
             train_run_id=obs.train_run_id,
             train_no=obs.train_no,
@@ -205,9 +206,26 @@ class TrainTracker:
         ordinal = _ordinal(run, station, obs.status)
         if ordinal is None:
             self.stats.unresolved_pattern += 1
-            return
+            return []
         run.ordinal = ordinal
         self.runs[obs.train_run_id] = run
+        if obs.source_generated_at is None:
+            return []
+        k, phase = divmod(ordinal, 3)
+        event = StationEvent(
+            train_run_id=run.train_run_id,
+            station=run._station_at(k),
+            event_type=_PHASES[phase],
+            time_lower=t,
+            time_upper=t,
+            inferred=False,
+            step=k,
+            leg=run.leg,
+            next_station=run._station_at(k + 1),
+        )
+        run.milestone_times[ordinal] = t
+        self.stats.events += 1
+        return [event]
 
 
 def _ordinal(run: RunState, station: str, status: ObsStatus) -> int | None:

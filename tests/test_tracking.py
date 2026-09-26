@@ -10,10 +10,25 @@ from helpers import kst, obs, simulate_trip
 NET = load_default_network()
 
 
-def run_all(observations, **kw):
+def run_all(observations, include_initial=False, **kw):
+    """Most tests look at transitions; the exact event emitted for a run's first
+    observation (see test_first_observation_is_an_exact_event) is left out by default."""
     tr = TrainTracker(NET, **kw)
-    events = [e for o in observations for e in tr.ingest(o)]
+    events, seen = [], set()
+    for o in observations:
+        out = tr.ingest(o)
+        if include_initial or o.train_run_id in seen:
+            events.extend(out)
+        seen.add(o.train_run_id)
     return tr, events
+
+
+def test_first_observation_is_an_exact_event():
+    t0 = kst(2026, 9, 26, 8, 0)
+    _, events = run_all([obs("1", "왕십리", "ARRIVE", "용문", t0)], include_initial=True)
+    assert [(e.station, e.event_type, e.inferred, e.uncertainty_seconds) for e in events] == [
+        ("왕십리", EventType.ARRIVAL, False, 0.0)
+    ]
 
 
 def test_full_trip_every_station_arrival_and_departure():
@@ -117,3 +132,24 @@ def test_seoul_branch_run():
     assert run.pattern.pattern_id == "SEOUL_BRANCH" and run.direction == 1
     segments, _ = derive_runs(events)
     assert [(s.from_station, s.to_station) for s in segments] == list(zip(stations, stations[1:]))
+
+
+def test_link_spans_unreported_stations():
+    from gjeta.tracking.derive import derive_links
+
+    t0 = kst(2026, 9, 26, 8, 35)
+    from gjeta.sources.seoul_realtime import parse_position_record
+    from helpers import record
+
+    def polled(station, status, changed_at, polled_at):
+        # real API: recptnDt = time of the state change, repeated on every poll
+        return parse_position_record(record("1", station, status, "문산", changed_at), observed_at=polled_at)
+
+    stream = []
+    for sec in range(0, 400, 15):   # stays "행신 arrived" while passing 능곡·대곡
+        stream.append(polled("행신", "ARRIVE", t0, t0 + timedelta(seconds=sec)))
+    stream.append(polled("곡산", "APPROACH", t0 + timedelta(seconds=400), t0 + timedelta(seconds=405)))
+    stream.append(polled("곡산", "ARRIVE", t0 + timedelta(seconds=440), t0 + timedelta(seconds=450)))
+    _, events = run_all(stream, include_initial=True)
+    links = [(iv.a, iv.b, iv.seconds, iv.usable) for iv in derive_links(events) if iv.kind == "LINK"]
+    assert ("행신", "곡산", 440.0, True) in links
